@@ -796,10 +796,13 @@ namespace CpuTests
                 case 0xf7: //RST 30H 1  16 - - - -
                     break;
                 case 0xf8: //LD HL,SP+r8 2  12 0 0 H C
+                    HL = DAD8((byte)SP, mmu.ReadByte(PC++));
                     break;
                 case 0xf9: //LD SP,HL 1  8 - - - -
+                    SP = HL;
                     break;
                 case 0xfa: //LD A,(a16) 3  16 - - - -
+
                     break;
                 case 0xfb: //EI 1  4 - - - -
                     break;
@@ -837,6 +840,10 @@ namespace CpuTests
         {
             SetFlag(CpuFlags.HalfCarry, result);
         }
+        private void SetFlagHCarry(byte a, byte b)
+        {
+            SetFlag(CpuFlags.HalfCarry, (a & 0x0F) + (b & 0x0F) >= 0x0F);
+        }
         private void SetFlagH(ushort a, ushort b)
         {
             SetFlag(CpuFlags.HalfCarry, (a & 0x0FFF) + (b & 0x0FFF) > 0x0FFF);
@@ -844,6 +851,10 @@ namespace CpuTests
         private void SetFlagHSub(byte a, byte b)
         {
             SetFlag(CpuFlags.HalfCarry, (a & 0x0F) < (b & 0x0F));
+        }
+        private void SetFlagHSubCarry(byte a, byte b)
+        {
+            SetFlag(CpuFlags.HalfCarry, (a & 0x0F) < ((b & 0x0F) + 1));
         }
         private void SetFlagC(bool result)
         {
@@ -858,6 +869,11 @@ namespace CpuTests
             SetFlag(CpuFlags.Carry, (result >> 16) != 0);
         }
         #region Instructions
+        private void PUSH(ushort value)
+        {
+            SP -= 2;
+            mmu.WriteWord(SP, value);
+        }
         private byte INC(byte operand) //Z 0 H -
         {
             byte result = operand++;
@@ -892,9 +908,35 @@ namespace CpuTests
             SetFlagC(result);
             A = bresult;
         }
+        private byte DAD8(byte a, byte b) //0 0 H C
+        {
+            int result = a + (sbyte)b;
+            byte bresult = (byte)result;
+            SetFlagZ(false);
+            SetFlagS(false);
+            SetFlagH(a, b);
+            SetFlagC(result);
+            return bresult;
+        }
         private void ADC(byte b) //Z 0 H C
         {
-            throw new NotImplementedException();
+            int result;
+            int carry = F.HasFlag(CpuFlags.Carry) ? 1 : 0;
+            result = A + b + carry;
+            
+            byte bresult = (byte)result;
+            SetFlagZ(bresult);
+            SetFlagS(false);
+            if (carry == 1)
+            {
+                SetFlagHCarry(A, b);
+            }
+            else
+            {
+                SetFlagH(A, b);
+            }
+            SetFlagC(result);
+            A = bresult;
         }
         private void SUB(byte b) //Z 1 H C
         {
@@ -907,8 +949,24 @@ namespace CpuTests
             A = bresult;
         }
         private void SBC(byte b) //Z 1 H C
-        { 
-            throw new NotImplementedException();
+        {
+            int result;
+            int carry = F.HasFlag(CpuFlags.Carry) ? 1 : 0;
+            result = A - b - carry;
+
+            byte bresult = (byte)result;
+            SetFlagZ(bresult);
+            SetFlagS(true);
+            if (carry == 1)
+            {
+                SetFlagHSubCarry(A, b);
+            }
+            else
+            {
+                SetFlagH(A, b);
+            }
+            SetFlagC(result);
+            A = bresult;
         }
         private void AND(byte b) //Z 0 1 0 
         {
